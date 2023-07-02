@@ -8,6 +8,7 @@ import babel
 from flask import Flask, render_template, request, Response, flash, redirect, url_for
 from flask_moment import Moment
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
 import logging
 from logging import Formatter, FileHandler
 from flask_wtf import Form
@@ -26,10 +27,10 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 # TODO: connect to a local postgresql database
 
-
 # ----------------------------------------------------------------------------#
 # Models.
 # ----------------------------------------------------------------------------#
+
 
 class Venue(db.Model):
     __tablename__ = 'Venue'
@@ -119,32 +120,26 @@ def index():
 
 @app.route('/venues')
 def venues():
-    # TODO: replace with real venues data.
-    #       num_upcoming_shows should be aggregated based on number of upcoming shows per venue.
-    data = [{
-        "city": "San Francisco",
-        "state": "CA",
-        "venues": [
-            {
-                "id": 1,
-                "name": "The Musical Hop",
-                "num_upcoming_shows": 0,
-            },
-            {
-                "id": 3,
-                "name": "Park Square Live Music & Coffee",
-                "num_upcoming_shows": 1,
-            }
-        ]
-    }, {
-        "city": "New York",
-        "state": "NY",
-        "venues": [{
-            "id": 2,
-            "name": "The Dueling Pianos Bar",
-            "num_upcoming_shows": 0,
-        }]
-    }]
+    data = []
+    venues_group = db.session.query(
+        Venue.city, Venue.state).group_by(Venue.city, Venue.state).all()
+    for venue in venues_group:
+        venue_dict = dict()
+        venue_dict['city'] = venue[0]
+        venue_dict['state'] = venue[1]
+        result_venue = db.session.query(Venue.id, Venue.name).filter(
+            Venue.city == venue_dict['city']).all()
+        venues = []
+        for el in result_venue:
+            venue = dict()
+            venue['id'] = el[0]
+            venue['name'] = el[1]
+            venue['num_upcoming_shows'] = len(db.session.query(Show.start_time).filter(
+                Show.venue_id == venue['id'], Show.start_time >= func.NOW()).all())
+            venues.append(venue)
+        venue_dict['venues'] = venues
+        data.append(venue_dict)
+
     return render_template('pages/venues.html', areas=data)
 
 
@@ -282,7 +277,8 @@ def create_venue_submission():
         flash('Venue ' + request.form['name'] + ' was successfully listed!')
     except:
         db.session.rollback()
-        flash('An error occurred. Venue ' + venue.name + ' could not be listed.')
+        flash('An error occurred. Venue ' +
+              venue.name + ' could not be listed.')
     finally:
         db.session.close()
     return render_template('pages/home.html')
@@ -303,17 +299,13 @@ def delete_venue(venue_id):
 
 @app.route('/artists')
 def artists():
-    # TODO: replace with real data returned from querying the database
-    data = [{
-        "id": 4,
-        "name": "Guns N Petals",
-    }, {
-        "id": 5,
-        "name": "Matt Quevedo",
-    }, {
-        "id": 6,
-        "name": "The Wild Sax Band",
-    }]
+    data = []
+    artists = Artist.query.with_entities(Artist.id, Artist.name).all()
+    for artist in artists:
+        data.append({
+            "id": artist.id,
+            "name": artist.name,
+        })
     return render_template('pages/artists.html', artists=data)
 
 
